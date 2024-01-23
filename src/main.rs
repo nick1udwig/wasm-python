@@ -3,14 +3,17 @@ use wasi_common::pipe::{ReadPipe, WritePipe};
 use wasmtime::*;
 use wasmtime_wasi::sync::WasiCtxBuilder;
 
-fn main() -> Result<()> {
+#[tokio::main]
+async fn main() -> Result<()> {
     // Define the WASI functions globally on the `Config`.
-    let engine = Engine::default();
+    let mut config = Config::new();
+    config.async_support(true);
+    let engine = Engine::new(&config)?;
     let mut linker = Linker::new(&engine);
     wasmtime_wasi::add_to_linker(&mut linker, |s| s)?;
 
     let dir = cap_std::fs::Dir::open_ambient_dir(
-        "module/target/wasm32-wasi/debug",
+        ".",
         cap_std::ambient_authority(),
     ).unwrap();
 
@@ -30,11 +33,11 @@ fn main() -> Result<()> {
 
     // Instantiate our module with the imports we've created, and run it.
     let module = Module::from_file(&engine, "python-3.12.0.wasm")?;
-    linker.module(&mut store, "", &module)?;
+    linker.module_async(&mut store, "", &module).await?;
     linker
         .get_default(&mut store, "")?
         .typed::<(), ()>(&store)?
-        .call(&mut store, ())?;
+        .call_async(&mut store, ()).await?;
 
     drop(store);
     let contents: Vec<u8> = wasi_stdout
